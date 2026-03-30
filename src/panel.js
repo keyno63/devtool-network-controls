@@ -20,6 +20,84 @@ function escapeHtml(value) {
         .replaceAll("'", "&#39;");
 }
 
+function buildReplayHeaders(item) {
+    const blockedHeaders = new Set([
+        "accept-encoding",
+        "connection",
+        "content-length",
+        "cookie",
+        "host",
+        "origin",
+        "referer",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "sec-fetch-dest",
+        "sec-fetch-mode",
+        "sec-fetch-site",
+        "sec-fetch-user"
+    ]);
+
+    const headers = {};
+    for (const header of item.requestHeaders ?? []) {
+        const name = String(header?.name ?? "").trim();
+        if (!name) continue;
+
+        const lowerName = name.toLowerCase();
+        if (blockedHeaders.has(lowerName)) continue;
+
+        headers[name] = String(header?.value ?? "");
+    }
+
+    return headers;
+}
+
+function getReplayBody(item) {
+    const method = String(item.method ?? "").toUpperCase();
+    if (method === "GET" || method === "HEAD") return undefined;
+    return item.requestPostData?.text ?? undefined;
+}
+
+function replayRequest(item) {
+    const requestInit = {
+        url: item.url,
+        method: item.method,
+        headers: buildReplayHeaders(item),
+        body: getReplayBody(item)
+    };
+
+    const expression = `(() => {
+        const request = ${JSON.stringify(requestInit)};
+        return fetch(request.url, {
+            method: request.method,
+            headers: request.headers,
+            body: request.body,
+            credentials: "include"
+        }).then(async (response) => ({
+            ok: response.ok,
+            status: response.status,
+            statusText: response.statusText,
+            url: response.url
+        })).catch((error) => ({
+            error: String(error)
+        }));
+    })()`;
+
+    chrome.devtools.inspectedWindow.eval(expression, (result, exceptionInfo) => {
+        if (exceptionInfo?.isException) {
+            alert(`再送に失敗しました: ${exceptionInfo.value ?? "unknown error"}`);
+            return;
+        }
+
+        if (result?.error) {
+            alert(`再送に失敗しました: ${result.error}`);
+            return;
+        }
+
+        alert(`再送しました: ${result.status} ${result.statusText}`);
+    });
+}
+
 function applyFilter() {
     const keyword = filterInput.value.trim().toLowerCase();
 
@@ -56,12 +134,25 @@ function renderList() {
             renderDetail();
         });
 
-        // 一覧行上での右クリック案内
         tr.addEventListener("contextmenu", (event) => {
             event.preventDefault();
             selectedId = tr.dataset.id;
             renderDetail();
-            alert("Network 項目の右クリック操作は未実装です。この一覧上で右クリック機能を追加できます。");
+
+            const item = filteredItems.find((x) => x.id === selectedId);
+            if (!item) {
+                alert("再送する対象が見つかりません。");
+                return;
+            }
+
+            const shouldReplay = confirm(
+                `このリクエストを再送しますか？\n\n${item.method} ${item.url}`
+            );
+            if (!shouldReplay) {
+                return;
+            }
+
+            replayRequest(item);
         });
     }
 }
