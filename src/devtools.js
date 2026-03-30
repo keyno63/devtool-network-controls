@@ -82,7 +82,7 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 chrome.devtools.panels.create(
-    "Net JSON",
+    "Request Analysis",
     "",
     "panels.html"
 );
