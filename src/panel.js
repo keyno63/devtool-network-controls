@@ -20,6 +20,25 @@ function escapeHtml(value) {
         .replaceAll("'", "&#39;");
 }
 
+function attachCopyHandlers() {
+    for (const button of detailEl.querySelectorAll("[data-copy-value]")) {
+        button.addEventListener("click", async () => {
+            const value = button.dataset.copyValue ?? "";
+
+            try {
+                await navigator.clipboard.writeText(value);
+                const originalText = button.textContent;
+                button.textContent = "Copied";
+                setTimeout(() => {
+                    button.textContent = originalText;
+                }, 1200);
+            } catch (error) {
+                alert(`コピーに失敗しました: ${String(error)}`);
+            }
+        });
+    }
+}
+
 function buildReplayHeaders(item) {
     const blockedHeaders = new Set([
         "accept-encoding",
@@ -168,7 +187,12 @@ function renderDetail() {
     const qpRows = item.queryParams.length
         ? item.queryParams.map(({ key, value }) => `
         <tr>
-          <td>${escapeHtml(key)}</td>
+          <td>
+            <div style="display: flex; gap: 8px; align-items: start;">
+              <span style="flex: 1;">${escapeHtml(key)}</span>
+              <button type="button" data-copy-value="${escapeHtml(value)}">Copy</button>
+            </div>
+          </td>
           <td>${escapeHtml(value)}</td>
         </tr>
       `).join("")
@@ -200,6 +224,8 @@ function renderDetail() {
       <pre>${escapeHtml(JSON.stringify(item, null, 2))}</pre>
     </div>
   `;
+
+    attachCopyHandlers();
 }
 
 filterInput.addEventListener("input", applyFilter);
